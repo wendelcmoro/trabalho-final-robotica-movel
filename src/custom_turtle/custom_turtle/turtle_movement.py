@@ -21,29 +21,29 @@ class VelocidadePub(Node):
         self.vel_msg.angular.z = 0.0
 
     def movimenta(self, i, t0):
-        if(i == 0):
-            self.rotate(30, t0)
-        else:
-            self.andaFrente(t0)
+        # if(i == 0):
+        #     self.rotate(30, t0)
+        # else:
+        self.andaFrente(t0)
 
-    def rotate(self, angulo, t0):
-        vel_rotacao = 15 # valor qualquer
-        vel_angular = round((vel_rotacao*PI)/180, 1)
-        angulo_alvo = round((angulo*PI)/180, 1)
+    # def rotate(self, angulo, t0):
+    #     vel_rotacao = 15 # valor qualquer
+    #     vel_angular = round((vel_rotacao*PI)/180, 1)
+    #     angulo_alvo = round((angulo*PI)/180, 1)
 
-        move_cmd = Twist()
-        move_cmd.linear.x = 0.0
-        move_cmd.angular.z = abs(vel_angular)
-        angulo_atual = 0.0
-        # Publica mesma mensagem ate chegar no angulo desejado
-        while (angulo_atual < angulo_alvo):
-            self.velocity_publisher.publish(move_cmd)
-            t1 = time.perf_counter()
-            angulo_atual = vel_angular*(t1-t0)
+    #     move_cmd = Twist()
+    #     move_cmd.linear.x = 0.0
+    #     move_cmd.angular.z = abs(vel_angular)
+    #     angulo_atual = 0.0
+    #     # Publica mesma mensagem ate chegar no angulo desejado
+    #     while (angulo_atual < angulo_alvo):
+    #         self.velocity_publisher.publish(move_cmd)
+    #         t1 = time.perf_counter()
+    #         angulo_atual = vel_angular*(t1-t0)
 
-        move_cmd.linear.x = 0.0
-        move_cmd.angular.z = 0.0
-        self.velocity_publisher.publish(move_cmd)
+    #     move_cmd.linear.x = 0.0
+    #     move_cmd.angular.z = 0.0
+    #     self.velocity_publisher.publish(move_cmd)
 
 
     def andaFrente(self, t0):
@@ -64,6 +64,6 @@ def main(args=None):
         t0 = time.perf_counter()
         velocidade.movimenta(i, t0)
         i = (i + 1) % 5000
-            
+
 if __name__ == '__main__':
     main()

@@ -22,6 +22,7 @@ setup(
         'console_scripts': [
             'turtle_node = custom_turtle.turtle_node:main',
             'turtle_movement = custom_turtle.turtle_movement:main',
+            'turtle_laser = custom_turtle.turtle_laser:main',
         ],
     },
 )
