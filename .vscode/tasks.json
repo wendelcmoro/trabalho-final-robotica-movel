@@ -6,17 +6,10 @@
         {
             "label": "build",
             "type": "shell",
-            "command": "colcon build"
-        },
-        {
-            "label": "install",
-            "type": "shell",
-            "command": ". install/setup.bash"
-        },
-        {
-            "label": "build & install",
-            "type": "shell",
-            "command": "colcon build && . install/setup.bash"
+            "command": "colcon build --symlink-install",
+            "options": {
+                "cwd": "${workspaceFolder}/submodule"
+            }
         }
     ]
 }

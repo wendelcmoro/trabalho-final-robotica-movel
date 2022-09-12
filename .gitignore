@@ -1,4 +1,4 @@
-/test
-/build
-/install
-/log
+submodule/test
+submodule/build
+submodule/install
+submodule/log
