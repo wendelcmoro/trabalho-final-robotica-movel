@@ -29,3 +29,16 @@ colcon build --symlink-install
 export TURTLEBOT3_MODEL=burger
 ros2 launch turtlebot3_gazebo maze_world.launch.py
 ```
+
+## TODO
+
+- [x] Carregar mapa e robô no gazebo
+- [ ] Comunicar do ROS2 para o robo gazebo
+- [ ] Fazer robô andar para frente
+- [ ] Fazer robô virar 90º para a direita
+- [ ] Teste do "bogosort" -- andar aleatoriamente até achar a saída enquanto evita paredes
+
+- [ ] Estimar posição do robô
+- [ ] Algoritmo para encontrar saída
+
+PS. acho que vai ser complicado fazer esses dois últimos, mas vamos ver
