@@ -30,6 +30,13 @@ export TURTLEBOT3_MODEL=burger
 ros2 launch turtlebot3_gazebo maze_world.launch.py
 ```
 
+Depois disso, podemos executar o comando para mover o Burguer com:
+```bash
+cd submodule
+ros2 run custom_turtle turtle_movement 
+```
+
+
 ## TODO
 
 - [x] Carregar mapa e robô no gazebo
