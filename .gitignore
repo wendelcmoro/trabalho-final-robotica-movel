@@ -2,3 +2,5 @@ submodule/test
 submodule/build
 submodule/install
 submodule/log
+
+*.pyc
