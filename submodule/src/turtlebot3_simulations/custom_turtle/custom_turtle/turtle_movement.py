@@ -21,12 +21,13 @@ class VelocidadePub(Node):
         self.vel_msg.angular.z = 0.0
 
     def movimenta(self, i, t0):
-        if(i == 0):
+        if i == 0:
             self.rotate(30, t0)
         else:
             self.andaFrente(t0)
 
     def rotate(self, angulo, t0):
+        print("rotating!")
         vel_rotacao = 15 # valor qualquer
         vel_angular = round((vel_rotacao*PI)/180, 1)
         angulo_alvo = round((angulo*PI)/180, 1)
@@ -48,7 +49,7 @@ class VelocidadePub(Node):
 
     def andaFrente(self, t0):
         move_cmd = Twist()
-        move_cmd.linear.x = 0.5
+        move_cmd.linear.x = 0.1
         move_cmd.angular.z = 0.0
 
         self.velocity_publisher.publish(move_cmd)
