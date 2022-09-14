@@ -1,9 +1,11 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
+from .turtle_laser import LaserSub
 import time
 
 PI = 3.1416
+FRONT_THRESHOLD = 0.2
 
 class VelocidadePub(Node):
     def __init__(self):
@@ -20,14 +22,33 @@ class VelocidadePub(Node):
         self.vel_msg.angular.y = 0.0  
         self.vel_msg.angular.z = 0.0
 
-    def movimenta(self, i, t0):
-        if i == 0:
-            self.rotate(30, t0)
-        else:
+        self.laser = LaserSub()
+
+        self.virando = False
+
+    def movimenta(self, t0):
+        print("t0: ", t0)
+        rclpy.spin_once(self.laser)
+        print("laser: ", [
+            'N: '  + str(self.laser.norte),
+            'NO: ' + str(self.laser.noroeste),
+            'O: '  + str(self.laser.oeste),
+            'S: '  + str(self.laser.sul),
+            'L: '  + str(self.laser.leste),
+            'NE: ' + str(self.laser.nordeste),
+        ])
+
+        if (self.laser.norte > FRONT_THRESHOLD):
             self.andaFrente(t0)
+        elif (self.virando):
+            self.rotate(90, t0)
+            self.virando = False
+        else:
+            self.parar(t0)
+            self.virando = True
 
     def rotate(self, angulo, t0):
-        print("rotating!")
+        print(f"rodando {angulo} graus...")
         vel_rotacao = 15 # valor qualquer
         vel_angular = round((vel_rotacao*PI)/180, 1)
         angulo_alvo = round((angulo*PI)/180, 1)
@@ -55,16 +76,22 @@ class VelocidadePub(Node):
         self.velocity_publisher.publish(move_cmd)
         self.get_logger().info('Andando para frente com velocidade 0.1')
 
+    def parar(self, t0):
+        move_cmd = Twist()
+        move_cmd.linear.x = 0.0
+        move_cmd.angular.z = 0.0
+
+        self.velocity_publisher.publish(move_cmd)
+        self.get_logger().info('Parada total.')
+
 def main(args=None):
     rclpy.init(args=args)
 
     velocidade = VelocidadePub()
 
-    i = 0
     while(True):
         t0 = time.perf_counter()
-        velocidade.movimenta(i, t0)
-        i = (i + 1) % 5000
+        velocidade.movimenta(t0)
 
 if __name__ == '__main__':
     main()
