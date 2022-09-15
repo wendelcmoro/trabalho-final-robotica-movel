@@ -17,7 +17,7 @@ Config X server
 
 ```bash
 export DISPLAY=$(grep nameserver /etc/resolv.conf | awk '{print $2}'):0.0
-export LIBGL_ALWAYS_INDIRECT=1 <---------- tem que testar com o 0 tb, mas o 1 deu certo
+export LIBGL_ALWAYS_INDIRECT=0
 ```
 
 Para iniciar o gazebo com mapa e robô:
@@ -36,13 +36,21 @@ cd submodule
 ros2 run custom_turtle turtle_movement 
 ```
 
+Para criar o mapa:
+```bash
+export TURTLEBOT3_MODEL=burger
+ros2 launch turtlebot3_cartographer cartographer.launch.py
+```
+
+
+ros2 run turtlebot3_teleop teleop_keyboard
 
 ## TODO
 
 - [x] Carregar mapa e robô no gazebo
-- [ ] Comunicar do ROS2 para o robo gazebo
-- [ ] Fazer robô andar para frente
-- [ ] Fazer robô virar 90º para a direita
+- [x] Comunicar do ROS2 para o robo gazebo
+- [x] Fazer robô andar para frente
+- [x] Fazer robô virar 90º para a direita
 - [ ] Teste do "bogosort" -- andar aleatoriamente até achar a saída enquanto evita paredes
 
 - [ ] Estimar posição do robô
