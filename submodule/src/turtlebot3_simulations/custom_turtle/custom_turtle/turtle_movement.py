@@ -1,3 +1,6 @@
+import logging
+
+from enum import Enum
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
@@ -10,30 +13,40 @@ FRONT_THRESHOLD = 0.25
 LEFT_THRESHOLD = 0.2
 CORNER_THRESHOLD = FRONT_THRESHOLD/1.5
 SPEED = 0.1/2
+ROTATION_SPEED = 0.1
 
-class VelocidadePub(Node):
+logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
+
+class Turn(Enum):
+    LEFT = ROTATION_SPEED
+    RIGHT = -ROTATION_SPEED
+    U = ROTATION_SPEED*4
+    FORWARD = SPEED*PI
+
+
+class State(Enum):
+    GO_TO_WALL = 0
+    FOLLOW_WALL = 1
+    U_TURN = 2
+
+
+class NinjaTurtle(Node):
     def __init__(self):
         # Criar publisher
         super().__init__('velocidadepub')
         self.velocity_publisher = self.create_publisher(Twist, 'cmd_vel', 10)
-        timer_period = 0.01
-        self.timer = self.create_timer(timer_period, self.movimenta)
-        self.vel_msg = Twist()
-        self.vel_msg.linear.x = 0.0  
-        self.vel_msg.linear.y = 0.0 
-        self.vel_msg.linear.z = 0.0  
-        self.vel_msg.angular.x = 0.0
-        self.vel_msg.angular.y = 0.0  
-        self.vel_msg.angular.z = 0.0
-
         self.laser = LaserSub()
-
-        self.virando = False
+        self.state = State.FOLLOW_WALL
 
     def main_loop(self):
-        while (True):
-            t0 = time.perf_counter()
-            self.movimenta(t0)
+        while True:
+            rclpy.spin_once(self.laser)
+            if self.state == State.GO_TO_WALL:
+                self.go_to_wall()
+            elif self.state == State.FOLLOW_WALL:
+                self.follow_wall()
+            elif self.state == State.U_TURN:
+                self.u_turn()
 
     def go_to_wall(self):
         rclpy.spin_once(self.laser)
@@ -59,53 +72,46 @@ class VelocidadePub(Node):
         self.rotate(-90, t0)
         self.log_laser()
 
+        self.state = State.FOLLOW_WALL
+
     def follow_wall(self):
-        # last_last_wall_distance = self.laser.oeste
         rclpy.spin_once(self.laser)
-        # already_rotated = 0
-        last_oeste_wall_distance = self.laser.oeste
-        last_leste_wall_distance = self.laser.leste
-        while True:
-            rclpy.spin_once(self.laser)
-            t0 = time.perf_counter()
+        t0 = time.perf_counter()
 
-            is_going_left = last_oeste_wall_distance < self.laser.oeste# or last_leste_wall_distance > self.laser.leste
-            is_going_right = last_oeste_wall_distance > self.laser.oeste# or last_leste_wall_distance < self.laser.leste
-            print(f"OO: {last_oeste_wall_distance}, OL: {last_leste_wall_distance}")
-            print(f"CO: {self.laser.oeste}, CL: {self.laser.leste}")
-            print(f"L: {is_going_left}. R: {is_going_right}")
-
-            if self.laser.norte < FRONT_THRESHOLD:
-                self.rotate(-45, t0)
-            elif self.laser.noroeste < CORNER_THRESHOLD:
-                print("NO")
-                self.rotate(-15, t0)
-            elif self.laser.nordeste < CORNER_THRESHOLD:
-                print("NE")
-                self.rotate(15, t0)
-            elif self.laser.oeste > LEFT_THRESHOLD + 0.02 and not is_going_left:
-                # adjusting_value = abs(1 - last_oeste_wall_distance/self.laser.oeste) * 1000
-                print("E", last_oeste_wall_distance, self.laser.oeste, "f", LEFT_THRESHOLD + 0.02)
-                if self.laser.oeste < FRONT_THRESHOLD*2:
-                    self.rotate(3, t0, False)
-                    # self.rotate(max(min(adjusting_value, 8), 3), t0, False)
-                else:
-                    # self.rotate(max(min(adjusting_value, 20), 3), t0, False)
-                    self.rotate(12, t0, False)
-                rclpy.spin_once(self.laser)
-            elif self.laser.oeste < LEFT_THRESHOLD - 0.02 and not is_going_right:
-                # adjusting_value = (1 - last_oeste_wall_distance/self.laser.oeste) * 1000
-                print("D", last_oeste_wall_distance, self.laser.oeste, "f", LEFT_THRESHOLD - 0.02)
-                self.rotate(-3, t0, False)
-                # self.rotate(min(max(adjusting_value, -8), -3), t0, False)
-                rclpy.spin_once(self.laser)
-                print(last_oeste_wall_distance, self.laser.oeste, "f", LEFT_THRESHOLD - 0.02)
+        if self.laser.norte < FRONT_THRESHOLD:
+            self.rotate(-45, t0)
+        elif self.laser.noroeste < CORNER_THRESHOLD:
+            print("NO")
+            self.rotate(-15, t0)
+        elif self.laser.nordeste < CORNER_THRESHOLD:
+            print("NE")
+            self.rotate(15, t0)
+        elif self.laser.oeste > LEFT_THRESHOLD + 0.02:
+            if self.laser.oeste < LEFT_THRESHOLD*2:
+                self.new_rotate(Turn.LEFT)
             else:
-                print("moving")
+                self.state = State.U_TURN
+            rclpy.spin_once(self.laser)
+        elif self.laser.oeste < LEFT_THRESHOLD - 0.02:
+            self.new_rotate(Turn.RIGHT)
+            rclpy.spin_once(self.laser)
+        else:
+            self.andaFrente()
 
-                self.andaFrente()
-            last_oeste_wall_distance = self.laser.oeste
-            last_leste_wall_distance = self.laser.leste
+    def u_turn(self):
+        if self.laser.oeste < LEFT_THRESHOLD:
+            self.state = State.FOLLOW_WALL
+        else:
+            logging.debug(self.laser.oeste)
+            self.new_rotate(Turn.FORWARD)
+
+    def new_rotate(self, rotation_speed: Turn):
+        logging.debug(f"Rotating to: {rotation_speed}")
+        move_cmd = Twist()
+        move_cmd.angular.z = rotation_speed.value
+        move_cmd.linear.x = SPEED
+
+        self.velocity_publisher.publish(move_cmd)
 
 
     def log_laser(self):
@@ -127,6 +133,7 @@ class VelocidadePub(Node):
             self.andaFrente()
         else:
              self.rotate(-90, t0)
+
 
     def rotate(self, angulo, t0, auto_stop = True):
         print(f"rodando {angulo} graus...")
@@ -155,6 +162,7 @@ class VelocidadePub(Node):
 
 
     def andaFrente(self):
+        logging.debug("Moving forward")
         move_cmd = Twist()
         move_cmd.linear.x = SPEED
         move_cmd.angular.z = 0.0
@@ -173,11 +181,9 @@ class VelocidadePub(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-    velocidade = VelocidadePub()
+    michellangelo = NinjaTurtle()
+    michellangelo.main_loop()
 
-    velocidade.go_to_wall()
-
-    velocidade.follow_wall()
 
 
 if __name__ == '__main__':
