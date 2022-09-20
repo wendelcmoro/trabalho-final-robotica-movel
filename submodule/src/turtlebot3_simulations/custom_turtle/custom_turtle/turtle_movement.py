@@ -1,35 +1,43 @@
-import logging
-
-from enum import Enum
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from .turtle_laser import LaserSub
-import time
 
+from enum import Enum
+import time
+import logging
+import signal
+import sys
+
+def signal_handler(sig, frame):
+    print('You pressed Ctrl+C! Ending program')
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
 
 PI = 3.1416
 FRONT_THRESHOLD = 0.25
 LEFT_THRESHOLD = 0.15
 CORNER_THRESHOLD = FRONT_THRESHOLD/1.5
-SPEED = 0.1/2
-ROTATION_SPEED = 0.1
+SPEED = 0.1
+ROTATION_SPEED = 1.0
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 
 class Turn(Enum):
     LEFT = ROTATION_SPEED
-    RIGHT = -ROTATION_SPEED
-    FORWARD = ROTATION_SPEED*4
-    U = SPEED*PI*2
-
+    RIGHT = -ROTATION_SPEED * 0.5
+    SMALL_LEFT = ROTATION_SPEED * 0.01
+    # SMALL_RIGHT = ROTATION_SPEED * 0.5
 
 class State(Enum):
-    GO_TO_WALL = 0
-    U_TURN = 1
-    FOLLOW_WALL = 2
-    MOVING_WEST = 3
-    MOVING_EAST = 4
+    FOWARD = 0
+    FOWARD_LEFT = 1
+    LEFT = 2
+    RIGHT = 3
+    SMALL_LEFT = 4
+    FAST_FOWARD = 5
+    STOPPED = 10
 
 
 class NinjaTurtle(Node):
@@ -38,98 +46,121 @@ class NinjaTurtle(Node):
         super().__init__('velocidadepub')
         self.velocity_publisher = self.create_publisher(Twist, 'cmd_vel', 10)
         self.laser = LaserSub()
-        self.state = State.FOLLOW_WALL
+        self.state = State.FOWARD
+        self.next_state = State.FOWARD
+
+        rclpy.spin_once(self.laser)
+        self.last_lidar = self.copyLaserData()
 
     def main_loop(self):
         while True:
-            rclpy.spin_once(self.laser)
-            if self.state == State.GO_TO_WALL:
-                self.go_to_wall()
-            elif self.state >= State.FOLLOW_WALL:
-                self.follow_wall()
-            elif self.state == State.U_TURN:
-                self.u_turn()
-
-    def follow_wall(self):
-        rclpy.spin_once(self.laser)
-        t0 = time.perf_counter()
-
-
-
-    def u_turn(self):
-        if self.laser.oeste < LEFT_THRESHOLD or self.laser.noroeste < FRONT_THRESHOLD*1.5:
-            logging.info("Changing U Turn state to wall follow.")
+            # Loggin
+            print("state:", self.state, end=' | ')
             self.log_laser()
-            self.state = State.FOLLOW_WALL
+
+            # Generate next state
+            if (self.state == State.LEFT):
+                self.next_state = State.FOWARD
+            else: 
+                self.set_next_state()
+
+            # Move to next state
+            self.state, self.next_state = self.next_state, State.STOPPED
+
+            # Take action
+            if self.state == State.STOPPED:
+                self.parar()
+            elif self.state == State.FOWARD:
+                self.andaFrente(SPEED*1)
+            elif self.state == State.FAST_FOWARD:
+                self.andaFrente(SPEED*1)
+            elif self.state == State.FOWARD_LEFT:
+                self.new_rotate(Turn.LEFT)
+            elif self.state == State.LEFT:
+                self.rotate(Turn.LEFT)
+            elif self.state == State.RIGHT:
+                self.rotate(Turn.RIGHT)
+            elif self.state == State.SMALL_LEFT:
+                self.rotate(Turn.SMALL_LEFT)
+
+    def set_next_state(self):
+        rclpy.spin_once(self.laser)
+
+        oeste = self.laser.oeste 
+        last_oeste = self.last_lidar["oeste"]
+        noroeste = self.laser.noroeste 
+        last_noroeste = self.last_lidar["noroeste"]
+
+        if self.laser.norte < 0.25:
+            self.next_state = State.RIGHT
+        elif self.laser.noroeste < 0.25:
+            self.next_state = State.RIGHT
+        elif self.laser.oeste > 0.2: # and self.laser.oeste < self.laser.noroeste: #and self.laser.oeste < self.laser.noroeste*2/3:
+            self.next_state = State.LEFT
+        elif self.state == State.FOWARD or self.state == State.FAST_FOWARD:
+            self.next_state = State.FAST_FOWARD
         else:
-            logging.debug(self.laser.oeste)
-            logging.debug(self.laser.noroeste)
-            self.new_rotate(Turn.U)
+            self.next_state = State.FOWARD
+        return
 
-    def new_rotate(self, rotation_speed: Turn):
-        logging.debug(f"Rotating to: {rotation_speed}")
-        move_cmd = Twist()
-        move_cmd.angular.z = rotation_speed.value
-        move_cmd.linear.x = SPEED
+        if (self.state == State.LEFT):
+            if self.laser.oeste > 0.25:
+                if self.laser.oeste < self.last_lidar["oeste"]:
+                    print("Take left after left")
+                    self.next_state = State.FOWARD_LEFT
+                else:
+                    self.next_state = State.FOWARD
+            else:
+                self.next_state = State.FOWARD
+        else:
+            if self.laser.oeste > 0.25:
+                print("Start left")
+                self.next_state = State.LEFT
+            else:
+                self.next_state = State.FOWARD
 
-        self.velocity_publisher.publish(move_cmd)
 
+        self.last_lidar = self.copyLaserData()
 
     def log_laser(self):
         rclpy.spin_once(self.laser)
-        print("laser: ", [
-            'N: ' + str(self.laser.norte),
-            'NO: ' + str(self.laser.noroeste),
-            'O: ' + str(self.laser.oeste),
-            'S: ' + str(self.laser.sul),
-            'L: ' + str(self.laser.leste),
-            'NE: ' + str(self.laser.nordeste),
-        ])
+        
+        values = [['N: ', self.laser.norte],
+            ['NO: ', self.laser.noroeste],
+            ['O: ', self.laser.oeste],
+            ['S: ', self.laser.sul],
+            ['L: ', self.laser.leste],
+            ['NE: ', self.laser.nordeste]]
+        
+        print("laser: ", end="")
+        for val in values:
+            print(val[0], "{:.4f}".format(val[1]), end=" ")
+        print()
 
-
-    def movimenta(self, t0):
-        rclpy.spin_once(self.laser)
-
-        if self.laser.norte > FRONT_THRESHOLD:
-            self.andaFrente()
-        else:
-             self.rotate(-90, t0)
-
-
-    def rotate(self, angulo, t0, auto_stop = True):
-        print(f"rodando {angulo} graus...")
-        if auto_stop:
-            self.parar()
-
-
-        vel_rotacao = 15 # valor qualquer
-        vel_angular = round((vel_rotacao*PI)/180, 1)
-        angulo_alvo = round((angulo*PI)/180, 1)
-
+    def andaFrente(self, speed):
+        # logging.debug("Moving forward")
         move_cmd = Twist()
-        move_cmd.linear.x = 0.0 if auto_stop else SPEED
-        move_cmd.angular.z = abs(vel_angular) if angulo > 0 else -abs(vel_angular)
-        angulo_atual = 0.0
-        # Publica mesma mensagem ate chegar no angulo desejado
-        print(angulo_alvo, angulo_atual, vel_angular)
-        while angulo_atual < abs(angulo_alvo):
-            self.velocity_publisher.publish(move_cmd)
-            t1 = time.perf_counter()
-            angulo_atual = abs(vel_angular)*(t1-t0)
-
-        move_cmd.linear.x = 0.0
+        move_cmd.linear.x = speed
         move_cmd.angular.z = 0.0
+
+        self.velocity_publisher.publish(move_cmd)
+        # self.get_logger().info('Andando para frente com velocidade ' + str(SPEED))
+    
+    def rotate(self, rotation_speed: Turn):
+        # logging.debug(f"Rotating to: {rotation_speed}")
+        move_cmd = Twist()
+        move_cmd.linear.x = 0.0
+        move_cmd.angular.z = rotation_speed.value
+
         self.velocity_publisher.publish(move_cmd)
 
-
-    def andaFrente(self):
-        logging.debug("Moving forward")
+    def new_rotate(self, rotation_speed: Turn):
+        # logging.debug(f"Rotating to: {rotation_speed}")
         move_cmd = Twist()
         move_cmd.linear.x = SPEED
-        move_cmd.angular.z = 0.0
+        move_cmd.angular.z = rotation_speed.value
 
         self.velocity_publisher.publish(move_cmd)
-        # self.get_logger().info('Andando para frente com velocidade SPEED')
 
     def parar(self):
         move_cmd = Twist()
@@ -137,7 +168,18 @@ class NinjaTurtle(Node):
         move_cmd.angular.z = 0.0
 
         self.velocity_publisher.publish(move_cmd)
-        self.get_logger().info('Parada total.')
+        # self.get_logger().info('Parada total.')
+
+    def copyLaserData(self):
+        return {
+            "norte": self.laser.norte,
+            "noroeste": self.laser.noroeste,
+            "oeste": self.laser.oeste,
+            "sul": self.laser.sul,
+            "leste": self.laser.leste,
+            "nordeste": self.laser.nordeste,
+        }
+
 
 def main(args=None):
     rclpy.init(args=args)
