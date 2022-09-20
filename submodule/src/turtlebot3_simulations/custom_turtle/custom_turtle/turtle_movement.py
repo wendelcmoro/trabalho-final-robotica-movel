@@ -27,15 +27,11 @@ logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 class Turn(Enum):
     LEFT = ROTATION_SPEED
     RIGHT = -ROTATION_SPEED * 0.5
-    SMALL_LEFT = ROTATION_SPEED * 0.01
-    # SMALL_RIGHT = ROTATION_SPEED * 0.5
 
 class State(Enum):
     FOWARD = 0
-    FOWARD_LEFT = 1
     LEFT = 2
     RIGHT = 3
-    SMALL_LEFT = 4
     FAST_FOWARD = 5
     STOPPED = 10
 
@@ -48,9 +44,6 @@ class NinjaTurtle(Node):
         self.laser = LaserSub()
         self.state = State.FOWARD
         self.next_state = State.FOWARD
-
-        rclpy.spin_once(self.laser)
-        self.last_lidar = self.copyLaserData()
 
     def main_loop(self):
         while True:
@@ -71,56 +64,28 @@ class NinjaTurtle(Node):
             if self.state == State.STOPPED:
                 self.parar()
             elif self.state == State.FOWARD:
-                self.andaFrente(SPEED*1)
+                self.andaFrente(SPEED)
             elif self.state == State.FAST_FOWARD:
                 self.andaFrente(SPEED*1)
-            elif self.state == State.FOWARD_LEFT:
-                self.new_rotate(Turn.LEFT)
             elif self.state == State.LEFT:
                 self.rotate(Turn.LEFT)
             elif self.state == State.RIGHT:
                 self.rotate(Turn.RIGHT)
-            elif self.state == State.SMALL_LEFT:
-                self.rotate(Turn.SMALL_LEFT)
-
+            
     def set_next_state(self):
         rclpy.spin_once(self.laser)
-
-        oeste = self.laser.oeste 
-        last_oeste = self.last_lidar["oeste"]
-        noroeste = self.laser.noroeste 
-        last_noroeste = self.last_lidar["noroeste"]
 
         if self.laser.norte < 0.25:
             self.next_state = State.RIGHT
         elif self.laser.noroeste < 0.25:
             self.next_state = State.RIGHT
-        elif self.laser.oeste > 0.2: # and self.laser.oeste < self.laser.noroeste: #and self.laser.oeste < self.laser.noroeste*2/3:
+        elif self.laser.oeste > 0.2:
             self.next_state = State.LEFT
         elif self.state == State.FOWARD or self.state == State.FAST_FOWARD:
             self.next_state = State.FAST_FOWARD
         else:
             self.next_state = State.FOWARD
         return
-
-        if (self.state == State.LEFT):
-            if self.laser.oeste > 0.25:
-                if self.laser.oeste < self.last_lidar["oeste"]:
-                    print("Take left after left")
-                    self.next_state = State.FOWARD_LEFT
-                else:
-                    self.next_state = State.FOWARD
-            else:
-                self.next_state = State.FOWARD
-        else:
-            if self.laser.oeste > 0.25:
-                print("Start left")
-                self.next_state = State.LEFT
-            else:
-                self.next_state = State.FOWARD
-
-
-        self.last_lidar = self.copyLaserData()
 
     def log_laser(self):
         rclpy.spin_once(self.laser)
@@ -138,7 +103,6 @@ class NinjaTurtle(Node):
         print()
 
     def andaFrente(self, speed):
-        # logging.debug("Moving forward")
         move_cmd = Twist()
         move_cmd.linear.x = speed
         move_cmd.angular.z = 0.0
@@ -154,14 +118,6 @@ class NinjaTurtle(Node):
 
         self.velocity_publisher.publish(move_cmd)
 
-    def new_rotate(self, rotation_speed: Turn):
-        # logging.debug(f"Rotating to: {rotation_speed}")
-        move_cmd = Twist()
-        move_cmd.linear.x = SPEED
-        move_cmd.angular.z = rotation_speed.value
-
-        self.velocity_publisher.publish(move_cmd)
-
     def parar(self):
         move_cmd = Twist()
         move_cmd.linear.x = 0.0
@@ -169,16 +125,6 @@ class NinjaTurtle(Node):
 
         self.velocity_publisher.publish(move_cmd)
         # self.get_logger().info('Parada total.')
-
-    def copyLaserData(self):
-        return {
-            "norte": self.laser.norte,
-            "noroeste": self.laser.noroeste,
-            "oeste": self.laser.oeste,
-            "sul": self.laser.sul,
-            "leste": self.laser.leste,
-            "nordeste": self.laser.nordeste,
-        }
 
 
 def main(args=None):
