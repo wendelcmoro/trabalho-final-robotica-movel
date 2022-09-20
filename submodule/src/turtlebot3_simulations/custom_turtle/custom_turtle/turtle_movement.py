@@ -10,7 +10,7 @@ import time
 
 PI = 3.1416
 FRONT_THRESHOLD = 0.25
-LEFT_THRESHOLD = 0.2
+LEFT_THRESHOLD = 0.15
 CORNER_THRESHOLD = FRONT_THRESHOLD/1.5
 SPEED = 0.1/2
 ROTATION_SPEED = 0.1
@@ -20,14 +20,16 @@ logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 class Turn(Enum):
     LEFT = ROTATION_SPEED
     RIGHT = -ROTATION_SPEED
-    U = ROTATION_SPEED*4
-    FORWARD = SPEED*PI
+    FORWARD = ROTATION_SPEED*4
+    U = SPEED*PI*2
 
 
 class State(Enum):
     GO_TO_WALL = 0
-    FOLLOW_WALL = 1
-    U_TURN = 2
+    U_TURN = 1
+    FOLLOW_WALL = 2
+    MOVING_WEST = 3
+    MOVING_EAST = 4
 
 
 class NinjaTurtle(Node):
@@ -43,67 +45,26 @@ class NinjaTurtle(Node):
             rclpy.spin_once(self.laser)
             if self.state == State.GO_TO_WALL:
                 self.go_to_wall()
-            elif self.state == State.FOLLOW_WALL:
+            elif self.state >= State.FOLLOW_WALL:
                 self.follow_wall()
             elif self.state == State.U_TURN:
                 self.u_turn()
-
-    def go_to_wall(self):
-        rclpy.spin_once(self.laser)
-
-        old_distance = self.laser.norte
-        while old_distance >= self.laser.norte:
-            old_distance = self.laser.norte
-            t0 = time.perf_counter()
-            rclpy.spin_once(self.laser)
-            if self.laser.oeste > self.laser.leste:
-                if self.laser.oeste < FRONT_THRESHOLD:
-                    break
-                self.rotate(1, t0)
-            else:
-                self.rotate(-1, t0)
-
-        rclpy.spin_once(self.laser)
-        while self.laser.norte > FRONT_THRESHOLD:
-            t0 = time.perf_counter()
-            rclpy.spin_once(self.laser)
-            self.andaFrente()
-        self.log_laser()
-        self.rotate(-90, t0)
-        self.log_laser()
-
-        self.state = State.FOLLOW_WALL
 
     def follow_wall(self):
         rclpy.spin_once(self.laser)
         t0 = time.perf_counter()
 
-        if self.laser.norte < FRONT_THRESHOLD:
-            self.rotate(-45, t0)
-        elif self.laser.noroeste < CORNER_THRESHOLD:
-            print("NO")
-            self.rotate(-15, t0)
-        elif self.laser.nordeste < CORNER_THRESHOLD:
-            print("NE")
-            self.rotate(15, t0)
-        elif self.laser.oeste > LEFT_THRESHOLD + 0.02:
-            if self.laser.oeste < LEFT_THRESHOLD*2:
-                self.new_rotate(Turn.LEFT)
-            else:
-                self.state = State.U_TURN
-            rclpy.spin_once(self.laser)
-        elif self.laser.oeste < LEFT_THRESHOLD - 0.02:
-            self.new_rotate(Turn.RIGHT)
-            rclpy.spin_once(self.laser)
-        else:
-            self.andaFrente()
+
 
     def u_turn(self):
-        if self.laser.oeste < LEFT_THRESHOLD:
+        if self.laser.oeste < LEFT_THRESHOLD or self.laser.noroeste < FRONT_THRESHOLD*1.5:
+            logging.info("Changing U Turn state to wall follow.")
+            self.log_laser()
             self.state = State.FOLLOW_WALL
         else:
             logging.debug(self.laser.oeste)
-            self.new_rotate(Turn.FORWARD)
+            logging.debug(self.laser.noroeste)
+            self.new_rotate(Turn.U)
 
     def new_rotate(self, rotation_speed: Turn):
         logging.debug(f"Rotating to: {rotation_speed}")
