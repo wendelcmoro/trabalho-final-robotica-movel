@@ -2,96 +2,138 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from .turtle_laser import LaserSub
+
+from enum import Enum
 import time
+import logging
+import signal
+import sys
+
+def signal_handler(sig, frame):
+    print('You pressed Ctrl+C! Ending program')
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
 
 PI = 3.1416
-FRONT_THRESHOLD = 0.2
+FRONT_THRESHOLD = 0.25
+LEFT_THRESHOLD = 0.15
+CORNER_THRESHOLD = FRONT_THRESHOLD/1.5
+SPEED = 0.1
+ROTATION_SPEED = 1.0
 
-class VelocidadePub(Node):
+logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
+
+class Turn(Enum):
+    LEFT = ROTATION_SPEED
+    RIGHT = -ROTATION_SPEED * 0.5
+
+class State(Enum):
+    FOWARD = 0
+    LEFT = 2
+    RIGHT = 3
+    FAST_FOWARD = 5
+    STOPPED = 10
+
+
+class NinjaTurtle(Node):
     def __init__(self):
         # Criar publisher
         super().__init__('velocidadepub')
         self.velocity_publisher = self.create_publisher(Twist, 'cmd_vel', 10)
-        timer_period = 0.01
-        self.timer = self.create_timer(timer_period, self.movimenta)
-        self.vel_msg = Twist()
-        self.vel_msg.linear.x = 0.0  
-        self.vel_msg.linear.y = 0.0 
-        self.vel_msg.linear.z = 0.0  
-        self.vel_msg.angular.x = 0.0
-        self.vel_msg.angular.y = 0.0  
-        self.vel_msg.angular.z = 0.0
-
         self.laser = LaserSub()
+        self.state = State.FOWARD
+        self.next_state = State.FOWARD
 
-        self.virando = False
+    def main_loop(self):
+        while True:
+            # Loggin
+            print("state:", self.state, end=' | ')
+            self.log_laser()
 
-    def movimenta(self, t0):
-        print("t0: ", t0)
+            # Generate next state
+            if (self.state == State.LEFT):
+                self.next_state = State.FOWARD
+            else: 
+                self.set_next_state()
+
+            # Move to next state
+            self.state, self.next_state = self.next_state, State.STOPPED
+
+            # Take action
+            if self.state == State.STOPPED:
+                self.parar()
+            elif self.state == State.FOWARD:
+                self.andaFrente(SPEED)
+            elif self.state == State.FAST_FOWARD:
+                self.andaFrente(SPEED*1)
+            elif self.state == State.LEFT:
+                self.rotate(Turn.LEFT)
+            elif self.state == State.RIGHT:
+                self.rotate(Turn.RIGHT)
+            
+    def set_next_state(self):
         rclpy.spin_once(self.laser)
-        print("laser: ", [
-            'N: '  + str(self.laser.norte),
-            'NO: ' + str(self.laser.noroeste),
-            'O: '  + str(self.laser.oeste),
-            'S: '  + str(self.laser.sul),
-            'L: '  + str(self.laser.leste),
-            'NE: ' + str(self.laser.nordeste),
-        ])
 
-        if (self.laser.norte > FRONT_THRESHOLD):
-            self.andaFrente(t0)
-        elif (self.virando):
-            self.rotate(90, t0)
-            self.virando = False
+        if self.laser.norte < 0.25:
+            self.next_state = State.RIGHT
+        elif self.laser.noroeste < 0.25:
+            self.next_state = State.RIGHT
+        elif self.laser.oeste > 0.2:
+            self.next_state = State.LEFT
+        elif self.state == State.FOWARD or self.state == State.FAST_FOWARD:
+            self.next_state = State.FAST_FOWARD
         else:
-            self.parar(t0)
-            self.virando = True
+            self.next_state = State.FOWARD
+        return
 
-    def rotate(self, angulo, t0):
-        print(f"rodando {angulo} graus...")
-        vel_rotacao = 15 # valor qualquer
-        vel_angular = round((vel_rotacao*PI)/180, 1)
-        angulo_alvo = round((angulo*PI)/180, 1)
+    def log_laser(self):
+        rclpy.spin_once(self.laser)
+        
+        values = [['N: ', self.laser.norte],
+            ['NO: ', self.laser.noroeste],
+            ['O: ', self.laser.oeste],
+            ['S: ', self.laser.sul],
+            ['L: ', self.laser.leste],
+            ['NE: ', self.laser.nordeste]]
+        
+        print("laser: ", end="")
+        for val in values:
+            print(val[0], "{:.4f}".format(val[1]), end=" ")
+        print()
 
+    def andaFrente(self, speed):
         move_cmd = Twist()
-        move_cmd.linear.x = 0.0
-        move_cmd.angular.z = abs(vel_angular)
-        angulo_atual = 0.0
-        # Publica mesma mensagem ate chegar no angulo desejado
-        while (angulo_atual < angulo_alvo):
-            self.velocity_publisher.publish(move_cmd)
-            t1 = time.perf_counter()
-            angulo_atual = vel_angular*(t1-t0)
-
-        move_cmd.linear.x = 0.0
-        move_cmd.angular.z = 0.0
-        self.velocity_publisher.publish(move_cmd)
-
-
-    def andaFrente(self, t0):
-        move_cmd = Twist()
-        move_cmd.linear.x = 0.1
+        move_cmd.linear.x = speed
         move_cmd.angular.z = 0.0
 
         self.velocity_publisher.publish(move_cmd)
-        self.get_logger().info('Andando para frente com velocidade 0.1')
+        # self.get_logger().info('Andando para frente com velocidade ' + str(SPEED))
+    
+    def rotate(self, rotation_speed: Turn):
+        # logging.debug(f"Rotating to: {rotation_speed}")
+        move_cmd = Twist()
+        move_cmd.linear.x = 0.0
+        move_cmd.angular.z = rotation_speed.value
 
-    def parar(self, t0):
+        self.velocity_publisher.publish(move_cmd)
+
+    def parar(self):
         move_cmd = Twist()
         move_cmd.linear.x = 0.0
         move_cmd.angular.z = 0.0
 
         self.velocity_publisher.publish(move_cmd)
-        self.get_logger().info('Parada total.')
+        # self.get_logger().info('Parada total.')
+
 
 def main(args=None):
     rclpy.init(args=args)
 
-    velocidade = VelocidadePub()
+    michellangelo = NinjaTurtle()
+    michellangelo.main_loop()
 
-    while(True):
-        t0 = time.perf_counter()
-        velocidade.movimenta(t0)
+
 
 if __name__ == '__main__':
     main()
